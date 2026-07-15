@@ -17,19 +17,65 @@ const EMPTY_FORM = {
   societe: "",
 };
 
+function PencilIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 15V3" />
+    </svg>
+  );
+}
+
+/** Échappe une valeur pour un champ CSV (guillemets, virgules, retours à la ligne) */
+function csvEscape(value: string | null): string {
+  if (value === null || value === undefined) return "";
+  const str = String(value);
+  if (str.includes('"') || str.includes(",") || str.includes("\n")) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
 export default function DashboardPage() {
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
   const [sourceFilter, setSourceFilter] = React.useState("Toutes");
   const [sources, setSources] = React.useState<string[]>([]);
+  const [exporting, setExporting] = React.useState(false);
 
   const [showAddDialog, setShowAddDialog] = React.useState(false);
+  const [editingContact, setEditingContact] = React.useState<Contact | null>(null);
   const [form, setForm] = React.useState(EMPTY_FORM);
   const [emailExists, setEmailExists] = React.useState(false);
   const [checkingEmail, setCheckingEmail] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+
+  const isEditing = editingContact !== null;
+  const dialogOpen = showAddDialog || isEditing;
 
   const fetchContacts = React.useCallback(async () => {
     setLoading(true);
@@ -83,18 +129,51 @@ export default function DashboardPage() {
     }
     setCheckingEmail(true);
     const timeout = setTimeout(async () => {
-      const { data } = await supabase
+      let query = supabase
         .from("contacts")
         .select("id")
         .ilike("email", form.email.trim())
         .limit(1);
+      // En mode édition, on ignore le contact qu'on est en train de modifier lui-même
+      if (isEditing && editingContact) {
+        query = query.neq("id", editingContact.id);
+      }
+      const { data } = await query;
       setEmailExists(!!data && data.length > 0);
       setCheckingEmail(false);
     }, 350);
     return () => clearTimeout(timeout);
-  }, [form.email]);
+  }, [form.email, isEditing, editingContact]);
 
-  async function handleAddContact(e: React.FormEvent) {
+  function openAddDialog() {
+    setForm(EMPTY_FORM);
+    setEditingContact(null);
+    setErrorMsg(null);
+    setShowAddDialog(true);
+  }
+
+  function openEditDialog(contact: Contact) {
+    setForm({
+      nom: contact.nom ?? "",
+      prenom: contact.prenom ?? "",
+      email: contact.email ?? "",
+      telephone: contact.telephone ?? "",
+      societe: contact.societe ?? "",
+    });
+    setEditingContact(contact);
+    setErrorMsg(null);
+    setShowAddDialog(false);
+  }
+
+  function closeDialog() {
+    setShowAddDialog(false);
+    setEditingContact(null);
+    setForm(EMPTY_FORM);
+    setEmailExists(false);
+    setErrorMsg(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -104,16 +183,27 @@ export default function DashboardPage() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("contacts").insert({
+
+    const payload = {
       nom: form.nom.trim(),
       prenom: form.prenom.trim() || null,
       email: form.email.trim() || null,
       telephone: form.telephone.trim() || null,
       societe: form.societe.trim() || null,
-      source: "Manuel",
-      status: "actif",
-      metadata: {},
-    });
+    };
+
+    let error;
+    if (isEditing && editingContact) {
+      ({ error } = await supabase.from("contacts").update(payload).eq("id", editingContact.id));
+    } else {
+      ({ error } = await supabase.from("contacts").insert({
+        ...payload,
+        source: "Manuel",
+        status: "actif",
+        metadata: {},
+      }));
+    }
+
     setSaving(false);
 
     if (error) {
@@ -121,11 +211,71 @@ export default function DashboardPage() {
       return;
     }
 
-    setForm(EMPTY_FORM);
-    setEmailExists(false);
-    setShowAddDialog(false);
+    closeDialog();
     fetchContacts();
     fetchSources();
+  }
+
+  async function handleDelete(contactId: string) {
+    setDeletingId(contactId);
+    const { error } = await supabase.from("contacts").delete().eq("id", contactId);
+    setDeletingId(null);
+    setConfirmDeleteId(null);
+
+    if (error) {
+      setErrorMsg("Erreur lors de la suppression : " + error.message);
+      return;
+    }
+    fetchContacts();
+    fetchSources();
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    setErrorMsg(null);
+
+    // On exporte TOUS les contacts actifs (pas seulement ceux affichés/filtrés à l'écran)
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("status", "actif")
+      .order("nom", { ascending: true });
+
+    setExporting(false);
+
+    if (error || !data) {
+      setErrorMsg("Erreur lors de l'export : " + (error?.message ?? "données introuvables"));
+      return;
+    }
+
+    const headers = ["Nom", "Prenom", "Email", "Telephone", "Societe", "Source"];
+    const lines = [headers.join(",")];
+
+    for (const c of data as Contact[]) {
+      lines.push(
+        [
+          csvEscape(c.nom),
+          csvEscape(c.prenom),
+          csvEscape(c.email),
+          csvEscape(c.telephone),
+          csvEscape(c.societe),
+          csvEscape(c.source),
+        ].join(",")
+      );
+    }
+
+    // Ajout du BOM UTF-8 pour un affichage correct des accents dans Excel
+    const csvContent = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `contacts-export-${date}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -137,8 +287,20 @@ export default function DashboardPage() {
             {loading ? "Chargement..." : `${contacts.length} contact(s) actif(s)`}
           </p>
         </div>
-        <Button onClick={() => setShowAddDialog(true)}>+ Ajouter un contact</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={exporting}>
+            <DownloadIcon />
+            {exporting ? "Export..." : "Exporter (CSV)"}
+          </Button>
+          <Button onClick={openAddDialog}>+ Ajouter un contact</Button>
+        </div>
       </div>
+
+      {errorMsg && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMsg}
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Input
@@ -172,6 +334,7 @@ export default function DashboardPage() {
               <th className="px-4 py-3">Téléphone</th>
               <th className="px-4 py-3">Société</th>
               <th className="px-4 py-3">Source</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -185,11 +348,51 @@ export default function DashboardPage() {
                 <td className="px-4 py-3">
                   <Badge variant="outline">{c.source}</Badge>
                 </td>
+                <td className="px-4 py-3">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Modifier"
+                      onClick={() => openEditDialog(c)}
+                    >
+                      <PencilIcon />
+                    </Button>
+                    {confirmDeleteId === c.id ? (
+                      <>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={deletingId === c.id}
+                          onClick={() => handleDelete(c.id)}
+                        >
+                          Confirmer
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setConfirmDeleteId(null)}
+                        >
+                          Annuler
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Supprimer"
+                        onClick={() => setConfirmDeleteId(c.id)}
+                      >
+                        <TrashIcon />
+                      </Button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
             {!loading && contacts.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                   Aucun contact trouvé.
                 </td>
               </tr>
@@ -212,6 +415,30 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-500">{c.email ?? "Pas d'email"}</p>
               <p className="text-sm text-slate-500">{c.telephone ?? "Pas de téléphone"}</p>
               {c.societe && <p className="text-sm text-slate-500">{c.societe}</p>}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => openEditDialog(c)}>
+                  <PencilIcon /> Modifier
+                </Button>
+                {confirmDeleteId === c.id ? (
+                  <>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deletingId === c.id}
+                      onClick={() => handleDelete(c.id)}
+                    >
+                      Confirmer
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>
+                      Annuler
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => setConfirmDeleteId(c.id)}>
+                    <TrashIcon /> Supprimer
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -220,12 +447,12 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un contact</DialogTitle>
+            <DialogTitle>{isEditing ? "Modifier le contact" : "Ajouter un contact"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAddContact} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="mb-1 block text-sm font-medium">Nom *</label>
               <Input
@@ -275,15 +502,11 @@ export default function DashboardPage() {
             </div>
             {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
             <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAddDialog(false)}
-              >
+              <Button type="button" variant="outline" onClick={closeDialog}>
                 Annuler
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Enregistrement..." : "Enregistrer"}
+                {saving ? "Enregistrement..." : isEditing ? "Mettre à jour" : "Enregistrer"}
               </Button>
             </div>
           </form>
