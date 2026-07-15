@@ -1,5 +1,6 @@
 import { AuthGate } from "@/components/auth-gate";
 import { LogoutButton } from "@/components/logout-button";
+import { InstallAppButton } from "@/components/install-app-button";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -23,6 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <a href="/doublons" className="rounded-lg px-3 py-2 hover:bg-slate-100">
                 Doublons
               </a>
+              <InstallAppButton />
               <LogoutButton />
             </nav>
           </div>

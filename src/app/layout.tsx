@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { PwaInstaller } from "@/components/pwa-installer";
 
 export const metadata: Metadata = {
   title: "Application Contacts",
@@ -36,7 +35,6 @@ export default function RootLayout({
     <html lang="fr">
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         {children}
-        <PwaInstaller />
       </body>
     </html>
   );
