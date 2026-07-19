@@ -1,106 +1,52 @@
-# Application Contacts
+# Concert Manager Pro — Étape 2 : squelette de l'interface
 
-Application web (Next.js 14 + Supabase) de centralisation et gestion de
-contacts, avec import CSV/Excel, détection de doublons et résolution
-manuelle côte à côte. PWA installable sur mobile, tablette et bureau.
+Ce paquet contient uniquement la structure de l'application : le menu latéral (sidebar)
+et les 8 pages du cahier des charges, sans contenu ni calcul pour l'instant.
+L'objectif de cette étape est juste de vérifier que la navigation fonctionne.
 
-## 1. Mise en place de Supabase
+## Déploiement (GitHub → Coolify), comme vos autres applications
 
-1. Créez un projet sur [supabase.com](https://supabase.com).
-2. Ouvrez l'éditeur SQL (`SQL Editor`) et exécutez le contenu du fichier
-   `supabase_schema.sql` fourni à la racine du projet.
-3. Dans **Project Settings > API**, récupérez :
-   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Activez l'authentification par email (ou votre méthode préférée) dans
-   **Authentication > Providers** : les politiques RLS du script exigent un
-   utilisateur `authenticated` pour lire/écrire les contacts.
+### 1. Créer le dépôt GitHub
+1. Allez sur github.com → bouton **"+"** → **"New repository"**
+2. Nom du dépôt : `concert-manager-pro`
+3. Visibilité : **Public** (comme vos autres apps)
+4. **Create repository**
 
-## 2. Installation locale
+### 2. Envoyer les fichiers sur GitHub
+Ce projet contient plusieurs dossiers et fichiers (pas un seul fichier comme vos apps
+statiques), donc utilisez **GitHub Desktop** :
+1. Ouvrez GitHub Desktop → **File → Clone repository** → sélectionnez `concert-manager-pro`
+2. Décompressez le zip que je vous ai fourni, et copiez tout son contenu dans le dossier
+   du dépôt cloné sur votre ordinateur
+3. Dans GitHub Desktop, vous verrez tous les fichiers apparaître → écrivez un message
+   (ex. "Étape 2 : squelette de l'interface") → **Commit to main** → **Push origin**
 
-```bash
-npm install
-cp .env.example .env.local
-# renseignez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY dans .env.local
-npm run dev
-```
+### 3. Créer le sous-domaine (DNS chez OVH)
+1. Manager OVH → votre domaine → **Zone DNS** → **Ajouter une entrée**
+2. Type **A**, sous-domaine proposé : `concerts-pro` (donnera `concerts-pro.mundoartpourtous.com`
+   — dites-moi si vous préférez un autre nom)
+3. Valeur : l'adresse IPv4 de votre VPS
+4. Valider
 
-L'application est disponible sur http://localhost:3000.
+### 4. Déployer dans Coolify
+1. **+ Add Resource → Applications → Public Repository**
+2. Collez l'adresse de votre dépôt : `moumymoumy/concert-manager-pro`
+3. **Build Pack : Dockerfile** (important — pas "Static", car cette app a besoin de calculs
+   côté serveur, contrairement à vos apps HTML simples)
+4. Onglet **Domains** → collez `https://concerts-pro.mundoartpourtous.com` → **Save**
+5. Cliquez sur **Deploy**
 
-## 3. Icônes PWA
+### 5. Comment tester que ça fonctionne
+Une fois le déploiement terminé (quelques minutes), ouvrez votre sous-domaine dans le
+navigateur. Vous devriez voir :
+- Un menu bleu foncé à gauche avec 8 liens (Tableau de bord, Concerts, Simulateur...)
+- En cliquant sur chaque lien, une page s'affiche avec un message
+  **"🚧 Ce module sera construit à l'étape suivante"**
 
-Le `manifest.json` référence des icônes dans `public/icons/` :
-- `icon-192.png`, `icon-512.png` (icônes standard)
-- `icon-maskable-192.png`, `icon-maskable-512.png` (icônes adaptatives Android)
+Si tout ça s'affiche correctement, la structure de l'application est validée et on peut
+passer à l'étape 3 (construction du noyau : gestion des concerts et calculs réels).
 
-Générez-les à partir de votre logo (ex. via https://realfavicongenerator.net
-ou https://maskable.app) et placez-les dans `public/icons/` avant le build.
-
-## 4. Déploiement via GitHub + Coolify
-
-1. Poussez ce projet sur un dépôt GitHub :
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit — Application Contacts"
-   git branch -M main
-   git remote add origin https://github.com/votre-compte/application-contacts.git
-   git push -u origin main
-   ```
-2. Dans Coolify, créez une nouvelle **Application** de type **Dockerfile**
-   (ou "Git Repository" avec build pack Dockerfile) pointant vers votre dépôt.
-3. Renseignez les variables d'environnement (Build & Runtime) :
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   > Ces variables doivent être disponibles **au moment du build** (elles sont
-   > injectées comme Build Args dans le Dockerfile) car Next.js les intègre au
-   > bundle client.
-4. Port exposé : `3000` (déjà configuré dans le Dockerfile, `EXPOSE 3000`).
-5. Coolify détecte le `HEALTHCHECK` du Dockerfile pour surveiller l'état du
-   conteneur.
-6. Configurez votre domaine et activez le HTTPS automatique (Let's Encrypt)
-   depuis Coolify.
-
-## 5. Fonctionnement de la détection de doublons
-
-- **Importation** (`/import`) : chaque ligne importée est comparée par email
-  (puis par nom + prénom) aux contacts déjà présents. En cas de
-  correspondance, la fiche importée est enregistrée avec le statut
-  `a_verifier` et référence la fiche existante via `duplicate_of`. Sinon, elle
-  est enregistrée directement en `actif`.
-- **Résolution** (`/doublons`) : affiche chaque paire (fiche existante / fiche
-  importée) côte à côte (empilée sur mobile), met en évidence les champs
-  différents, et propose :
-  - **Garder les deux** : la fiche importée passe en `actif`, les deux fiches
-    restent distinctes.
-  - **Supprimer le nouveau** : supprime uniquement la fiche importée.
-  - **Fusionner** : applique les valeurs sélectionnées champ par champ à la
-    fiche existante, puis supprime la fiche importée.
-
-Aucune fusion ou suppression n'est automatique : tout passe par une validation
-humaine explicite, conformément à la règle d'or du cahier des charges.
-
-## 6. Structure du projet
-
-```
-src/
-  app/
-    layout.tsx        Layout global + PWA
-    page.tsx           Dashboard (liste, recherche, filtres, ajout manuel)
-    import/page.tsx     Import CSV + mapping
-    doublons/page.tsx    Résolution des doublons
-  components/
-    ui/                 Boutons, inputs, dialogs, badges, cards
-    csv-mapper.tsx       Assistant de mapping des colonnes CSV
-    duplicate-card.tsx   Carte de comparaison côte à côte
-    pwa-installer.tsx    Bouton d'installation PWA
-  lib/
-    supabase.ts          Client Supabase + types
-    csv.ts                Parseur CSV
-    utils.ts              Utilitaire cn()
-public/
-  manifest.json           Manifest PWA
-  sw.js                    Service worker (cache réseau-d'abord)
-supabase_schema.sql         Script SQL à exécuter dans Supabase
-Dockerfile                  Build multi-étapes pour Coolify
-```
+## Pas encore utilisé à cette étape
+Le fichier `.env.example` et `src/lib/supabase.ts` sont déjà en place pour préparer la
+connexion à votre projet Supabase `contacts-app`, mais rien n'est branché pour l'instant
+— ça viendra à l'étape 3.
