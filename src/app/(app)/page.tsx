@@ -17,6 +17,19 @@ const EMPTY_FORM = {
   societe: "",
 };
 
+// Colonnes triables et leur nom réel en base de données
+const SORTABLE_COLUMNS = {
+  nom: "Nom",
+  prenom: "Prénom",
+  email: "Email",
+  telephone: "Téléphone",
+  societe: "Société",
+  source: "Source",
+} as const;
+
+type SortColumn = keyof typeof SORTABLE_COLUMNS;
+type SortDirection = "asc" | "desc";
+
 function PencilIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -46,6 +59,15 @@ function DownloadIcon() {
   );
 }
 
+/** Petite flèche indiquant le sens de tri actif sur une colonne */
+function SortArrow({ direction }: { direction: SortDirection }) {
+  return (
+    <span className="ml-1 inline-block text-slate-400">
+      {direction === "asc" ? "▲" : "▼"}
+    </span>
+  );
+}
+
 /** Échappe une valeur pour un champ CSV (guillemets, virgules, retours à la ligne) */
 function csvEscape(value: string | null): string {
   if (value === null || value === undefined) return "";
@@ -64,6 +86,10 @@ export default function DashboardPage() {
   const [sources, setSources] = React.useState<string[]>([]);
   const [exporting, setExporting] = React.useState(false);
 
+  // État du tri par colonne (par défaut : Nom, croissant — comme avant)
+  const [sortColumn, setSortColumn] = React.useState<SortColumn>("nom");
+  const [sortDirection, setSortDirection] = React.useState<SortDirection>("asc");
+
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [editingContact, setEditingContact] = React.useState<Contact | null>(null);
   const [form, setForm] = React.useState(EMPTY_FORM);
@@ -77,13 +103,23 @@ export default function DashboardPage() {
   const isEditing = editingContact !== null;
   const dialogOpen = showAddDialog || isEditing;
 
+  /** Clique sur un titre de colonne : change le tri actif, ou inverse le sens si on reclique sur la même colonne */
+  function handleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  }
+
   const fetchContacts = React.useCallback(async () => {
     setLoading(true);
     let query = supabase
       .from("contacts")
       .select("*")
       .eq("status", "actif")
-      .order("nom", { ascending: true });
+      .order(sortColumn, { ascending: sortDirection === "asc", nullsFirst: false });
 
     if (search.trim().length > 0) {
       const term = search.trim();
@@ -101,7 +137,7 @@ export default function DashboardPage() {
       setContacts(data as Contact[]);
     }
     setLoading(false);
-  }, [search, sourceFilter]);
+  }, [search, sourceFilter, sortColumn, sortDirection]);
 
   const fetchSources = React.useCallback(async () => {
     const { data } = await supabase.from("contacts").select("source").eq("status", "actif");
@@ -328,12 +364,17 @@ export default function DashboardPage() {
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Nom</th>
-              <th className="px-4 py-3">Prénom</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Téléphone</th>
-              <th className="px-4 py-3">Société</th>
-              <th className="px-4 py-3">Source</th>
+              {(Object.keys(SORTABLE_COLUMNS) as SortColumn[]).map((col) => (
+                <th
+                  key={col}
+                  className="cursor-pointer select-none px-4 py-3 hover:text-slate-700"
+                  onClick={() => handleSort(col)}
+                  title="Cliquer pour trier"
+                >
+                  {SORTABLE_COLUMNS[col]}
+                  {sortColumn === col && <SortArrow direction={sortDirection} />}
+                </th>
+              ))}
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
