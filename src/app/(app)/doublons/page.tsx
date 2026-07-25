@@ -2,7 +2,12 @@
 
 import * as React from "react";
 import { supabase, type Contact } from "@/lib/supabase";
-import { DuplicateCard, type FieldSelections } from "@/components/duplicate-card";
+import {
+  DuplicateCard,
+  getDefaultSelections,
+  type FieldSelections,
+} from "@/components/duplicate-card";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface DuplicatePair {
@@ -15,6 +20,17 @@ export default function DoublonsPage() {
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Choix "existant / importé" pour chaque champ, par paire de doublon
+  // (clé = id de la fiche importée). Contrôlé ici pour que le bouton
+  // "Tout fusionner" puisse réutiliser exactement les mêmes choix que
+  // ceux affichés sur chaque carte.
+  const [selectionsMap, setSelectionsMap] = React.useState<Record<string, FieldSelections>>({});
+
+  // Confirmation en 2 temps avant la fusion globale (action groupée et
+  // irréversible, même principe que la suppression individuelle)
+  const [confirmMergeAll, setConfirmMergeAll] = React.useState(false);
+  const [mergingAll, setMergingAll] = React.useState(false);
 
   const fetchDuplicates = React.useCallback(async () => {
     setLoading(true);
@@ -39,6 +55,7 @@ export default function DoublonsPage() {
 
     if (existingIds.length === 0) {
       setPairs([]);
+      setSelectionsMap({});
       setLoading(false);
       return;
     }
@@ -59,19 +76,27 @@ export default function DoublonsPage() {
     );
 
     const built: DuplicatePair[] = [];
+    const initialSelections: Record<string, FieldSelections> = {};
     for (const imp of imported) {
       if (imp.duplicate_of && existingMap.has(imp.duplicate_of)) {
-        built.push({ existing: existingMap.get(imp.duplicate_of)!, imported: imp });
+        const existingContact = existingMap.get(imp.duplicate_of)!;
+        built.push({ existing: existingContact, imported: imp });
+        initialSelections[imp.id] = getDefaultSelections(existingContact, imp);
       }
     }
 
     setPairs(built);
+    setSelectionsMap(initialSelections);
     setLoading(false);
   }, []);
 
   React.useEffect(() => {
     fetchDuplicates();
   }, [fetchDuplicates]);
+
+  function handleSelectionsChange(importedId: string, next: FieldSelections) {
+    setSelectionsMap((prev) => ({ ...prev, [importedId]: next }));
+  }
 
   async function handleIgnore(importedId: string) {
     setBusyId(importedId);
@@ -145,15 +170,79 @@ export default function DoublonsPage() {
     setPairs((prev) => prev.filter((p) => p.imported.id !== importedId));
   }
 
+  /**
+   * Applique "Fusionner avec les valeurs choisies" à toute la liste, en
+   * réutilisant pour chaque carte les choix actuellement sélectionnés
+   * (ou les choix par défaut si l'utilisateur n'a rien changé). Les autres
+   * actions (Ignorer, Supprimer) restent inchangées et disponibles au cas
+   * par cas, ce bouton ne fait qu'appliquer "Fusionner" à tout le monde.
+   */
+  async function handleMergeAll() {
+    if (!confirmMergeAll) {
+      setConfirmMergeAll(true);
+      return;
+    }
+
+    setMergingAll(true);
+    setErrorMsg(null);
+    setConfirmMergeAll(false);
+
+    const toMerge = [...pairs];
+    let erreurs = 0;
+
+    for (const pair of toMerge) {
+      const selections = selectionsMap[pair.imported.id] ?? getDefaultSelections(pair.existing, pair.imported);
+      try {
+        await handleMerge(pair.existing.id, pair.imported.id, selections);
+      } catch {
+        erreurs++;
+      }
+    }
+
+    setMergingAll(false);
+
+    // On resynchronise avec la base au cas où une fusion aurait échoué
+    // silencieusement (ex : fiche déjà modifiée entre-temps ailleurs).
+    await fetchDuplicates();
+
+    if (erreurs > 0) {
+      setErrorMsg(`${erreurs} fusion(s) ont échoué et nécessitent une résolution manuelle ci-dessous.`);
+    }
+  }
+
+  const anyBusy = busyId !== null || mergingAll;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Résolution des doublons</h1>
-        <p className="text-sm text-slate-500">
-          Comparez chaque fiche importée à la fiche existante et choisissez comment
-          résoudre le conflit. Rien n&apos;est modifié tant que vous ne validez pas une
-          action.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Résolution des doublons</h1>
+          <p className="text-sm text-slate-500">
+            Comparez chaque fiche importée à la fiche existante et choisissez comment
+            résoudre le conflit. Rien n&apos;est modifié tant que vous ne validez pas une
+            action.
+          </p>
+        </div>
+        {pairs.length > 0 && (
+          <div className="flex shrink-0 items-center gap-2">
+            {confirmMergeAll && !mergingAll && (
+              <Button variant="ghost" onClick={() => setConfirmMergeAll(false)}>
+                Annuler
+              </Button>
+            )}
+            <Button
+              variant={confirmMergeAll ? "destructive" : "success"}
+              disabled={anyBusy}
+              onClick={handleMergeAll}
+            >
+              {mergingAll
+                ? "Fusion en cours..."
+                : confirmMergeAll
+                ? `Confirmer la fusion de ${pairs.length} doublon(s) ?`
+                : "Tout fusionner avec les valeurs choisies"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {errorMsg && (
@@ -178,10 +267,14 @@ export default function DoublonsPage() {
             key={pair.imported.id}
             existing={pair.existing}
             imported={pair.imported}
+            selections={
+              selectionsMap[pair.imported.id] ?? getDefaultSelections(pair.existing, pair.imported)
+            }
+            onSelectionsChange={(next) => handleSelectionsChange(pair.imported.id, next)}
             onIgnore={handleIgnore}
             onDelete={handleDelete}
             onMerge={handleMerge}
-            busy={busyId === pair.imported.id}
+            busy={busyId === pair.imported.id || mergingAll}
           />
         ))}
       </div>
