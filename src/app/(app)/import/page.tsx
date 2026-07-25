@@ -10,6 +10,7 @@ import {
 } from "@/components/csv-mapper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -23,10 +24,15 @@ interface ImportSummary {
   erreurs: number;
 }
 
+// Sources courantes proposées par défaut. Ajoute-en d'autres ici si besoin
+// (ex: "Facebook", "Événement") en gardant la même orthographe à chaque fois.
+const SOURCE_PRESETS = ["Wix", "Mailchimp", "Brevo", "Import_Excel", "Autre"];
+
 export default function ImportPage() {
   const [step, setStep] = React.useState<Step>("upload");
   const [fileName, setFileName] = React.useState("");
-  const [sourceName, setSourceName] = React.useState("Import_Excel");
+  const [sourcePreset, setSourcePreset] = React.useState("Import_Excel");
+  const [customSource, setCustomSource] = React.useState("");
   const [headers, setHeaders] = React.useState<string[]>([]);
   const [rows, setRows] = React.useState<string[][]>([]);
   const [mapping, setMapping] = React.useState<ColumnMapping>({});
@@ -34,6 +40,11 @@ export default function ImportPage() {
   const [progress, setProgress] = React.useState(0);
   const [summary, setSummary] = React.useState<ImportSummary | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Le nom de source final utilisé pour l'import : le préréglage choisi,
+  // ou le texte personnalisé si "Autre" est sélectionné
+  const sourceName =
+    sourcePreset === "Autre" ? customSource.trim() || "Autre" : sourcePreset;
 
   function handleFile(file: File) {
     setErrorMsg(null);
@@ -190,15 +201,36 @@ export default function ImportPage() {
       {step === "upload" && (
         <Card>
           <CardContent>
-            <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium">
-                Nom de la source (ex: Wix, Mailchimp, Import_Excel)
-              </label>
-              <Input
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
-                className="max-w-xs"
-              />
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Origine de ce fichier
+                </label>
+                <Select
+                  value={sourcePreset}
+                  onChange={(e) => setSourcePreset(e.target.value)}
+                  className="max-w-xs"
+                >
+                  {SOURCE_PRESETS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              {sourcePreset === "Autre" && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Précisez la source
+                  </label>
+                  <Input
+                    value={customSource}
+                    onChange={(e) => setCustomSource(e.target.value)}
+                    placeholder="ex: Facebook, Événement..."
+                    className="max-w-xs"
+                  />
+                </div>
+              )}
             </div>
             <div
               onDragOver={(e) => {
@@ -239,7 +271,8 @@ export default function ImportPage() {
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">
               Fichier : <span className="font-medium text-slate-700">{fileName}</span> —{" "}
-              {rows.length} ligne(s) détectée(s)
+              {rows.length} ligne(s) détectée(s) — Source :{" "}
+              <span className="font-medium text-slate-700">{sourceName}</span>
             </p>
             <Button variant="outline" onClick={reset}>
               Changer de fichier
