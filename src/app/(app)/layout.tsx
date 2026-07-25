@@ -24,6 +24,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <a href="/doublons" className="rounded-lg px-3 py-2 hover:bg-slate-100">
                 Doublons
               </a>
+              <a href="/guide" className="rounded-lg px-3 py-2 hover:bg-slate-100">
+                Guide
+              </a>
               <InstallAppButton />
               <LogoutButton />
             </nav>
