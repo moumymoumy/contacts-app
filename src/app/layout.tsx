@@ -1,10 +1,29 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import Sidebar from '@/components/Sidebar';
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Concert Manager Pro',
-  description: 'Gestion, pilotage et analyse économique de concerts',
+  title: "Application Contacts",
+  description: "Centralisation et gestion de contacts (Wix, Mailchimp, Excel...) avec détection de doublons",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Contacts",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#0f172a",
 };
 
 export default function RootLayout({
@@ -14,9 +33,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr">
-      <body>
-        <Sidebar />
-        <main className="ml-64 min-h-screen p-8">{children}</main>
+      <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
+        {children}
       </body>
     </html>
   );
