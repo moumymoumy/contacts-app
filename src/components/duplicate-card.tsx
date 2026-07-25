@@ -18,9 +18,27 @@ const FIELDS: { key: keyof Contact; label: string }[] = [
 export type FieldChoice = "existing" | "imported";
 export type FieldSelections = Record<string, FieldChoice>;
 
+/**
+ * Calcule les sélections par défaut pour une paire de doublons : on garde la
+ * valeur existante, sauf si elle est vide (auquel cas on prend la valeur
+ * importée). Exportée pour que la page parente puisse initialiser le même
+ * comportement par défaut pour chaque carte, et pour le bouton "Tout
+ * fusionner" qui doit utiliser les mêmes valeurs que celles affichées.
+ */
+export function getDefaultSelections(existing: Contact, imported: Contact): FieldSelections {
+  const selections: FieldSelections = {};
+  for (const f of FIELDS) {
+    const existingVal = existing[f.key];
+    selections[f.key] = existingVal ? "existing" : "imported";
+  }
+  return selections;
+}
+
 interface DuplicateCardProps {
   existing: Contact;
   imported: Contact;
+  selections: FieldSelections;
+  onSelectionsChange: (next: FieldSelections) => void;
   onIgnore: (importedId: string) => void;
   onDelete: (importedId: string) => void;
   onMerge: (existingId: string, importedId: string, selections: FieldSelections) => void;
@@ -30,19 +48,13 @@ interface DuplicateCardProps {
 export function DuplicateCard({
   existing,
   imported,
+  selections,
+  onSelectionsChange,
   onIgnore,
   onDelete,
   onMerge,
   busy,
 }: DuplicateCardProps) {
-  // Par défaut, on garde les valeurs existantes sauf si le champ existant est vide
-  const initialSelections: FieldSelections = {};
-  for (const f of FIELDS) {
-    const existingVal = existing[f.key];
-    initialSelections[f.key] = existingVal ? "existing" : "imported";
-  }
-  const [selections, setSelections] = React.useState<FieldSelections>(initialSelections);
-
   function isDifferent(key: keyof Contact) {
     return (existing[key] ?? "") !== (imported[key] ?? "");
   }
@@ -70,7 +82,7 @@ export function DuplicateCard({
                 highlighted={isDifferent(f.key)}
                 selected={selections[f.key] === "existing"}
                 onSelect={() =>
-                  setSelections((s) => ({ ...s, [f.key]: "existing" }))
+                  onSelectionsChange({ ...selections, [f.key]: "existing" })
                 }
               />
             ))}
@@ -89,7 +101,7 @@ export function DuplicateCard({
                 highlighted={isDifferent(f.key)}
                 selected={selections[f.key] === "imported"}
                 onSelect={() =>
-                  setSelections((s) => ({ ...s, [f.key]: "imported" }))
+                  onSelectionsChange({ ...selections, [f.key]: "imported" })
                 }
               />
             ))}
