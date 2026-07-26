@@ -88,8 +88,10 @@ export default function ImportPage() {
     }
 
     const nomHeader = reverseMapping["nom"];
-    if (!nomHeader) {
-      setErrorMsg("Vous devez associer au moins une colonne au champ 'Nom' avant d'importer.");
+    const prenomHeaderCheck = reverseMapping["prenom"];
+    const emailHeaderCheck = reverseMapping["email"];
+    if (!nomHeader && !prenomHeaderCheck && !emailHeaderCheck) {
+      setErrorMsg("Vous devez associer au moins une colonne au champ 'Nom', 'Prénom' ou 'Email' avant d'importer.");
       setStep("mapping");
       return;
     }
@@ -112,13 +114,18 @@ export default function ImportPage() {
       };
 
       const nom = getValue("nom");
-      if (!nom) {
+      const prenom = getValue("prenom");
+      const email = getValue("email");
+      if (!nom && !prenom && !email) {
         ignores++;
         setProgress(Math.round(((i + 1) / rows.length) * 100));
         continue;
       }
+      // Si le Nom est vide, on utilise le Prénom en secours, puis l'Email en
+      // dernier recours (le champ Nom est obligatoire en base). À corriger
+      // manuellement plus tard si besoin.
+      const finalNom = nom || prenom || (email as string);
 
-      const email = getValue("email");
       let existingId: string | null = null;
 
       if (email) {
@@ -132,11 +139,10 @@ export default function ImportPage() {
       }
 
       if (!existingId) {
-        const prenom = getValue("prenom");
         const { data: existingByName } = await supabase
           .from("contacts")
           .select("id")
-          .ilike("nom", nom)
+          .ilike("nom", finalNom)
           .ilike("prenom", prenom ?? "")
           .limit(1)
           .maybeSingle();
@@ -144,8 +150,8 @@ export default function ImportPage() {
       }
 
       const payload: ContactInsert = {
-        nom,
-        prenom: getValue("prenom"),
+        nom: finalNom,
+        prenom,
         email,
         telephone: getValue("telephone"),
         societe: getValue("societe"),
@@ -314,7 +320,7 @@ export default function ImportPage() {
               <Badge variant="success">{summary.actif} ajoutés (actif)</Badge>
               <Badge variant="warning">{summary.aVerifier} à vérifier (doublons)</Badge>
               {summary.ignores > 0 && (
-                <Badge variant="outline">{summary.ignores} ignorées (sans nom)</Badge>
+                <Badge variant="outline">{summary.ignores} ignorées (sans nom, prénom, ni email)</Badge>
               )}
               {summary.erreurs > 0 && (
                 <Badge variant="danger">{summary.erreurs} erreurs</Badge>
