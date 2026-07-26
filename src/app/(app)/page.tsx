@@ -100,6 +100,48 @@ export default function DashboardPage() {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
 
+  // Barre de défilement horizontale dupliquée en haut du tableau, synchronisée
+  // avec le défilement réel — pratique pour scroller à la souris sans devoir
+  // redescendre chercher la barre native en bas du tableau.
+  const tableScrollRef = React.useRef<HTMLDivElement>(null);
+  const topScrollRef = React.useRef<HTMLDivElement>(null);
+  const tableRef = React.useRef<HTMLTableElement>(null);
+  const [tableWidth, setTableWidth] = React.useState(0);
+  const isSyncingScroll = React.useRef(false);
+
+  React.useEffect(() => {
+    function updateTableWidth() {
+      if (tableRef.current) {
+        setTableWidth(tableRef.current.scrollWidth);
+      }
+    }
+    updateTableWidth();
+    window.addEventListener("resize", updateTableWidth);
+    return () => window.removeEventListener("resize", updateTableWidth);
+  }, [contacts]);
+
+  function handleTopScroll() {
+    if (isSyncingScroll.current) {
+      isSyncingScroll.current = false;
+      return;
+    }
+    if (topScrollRef.current && tableScrollRef.current) {
+      isSyncingScroll.current = true;
+      tableScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+  }
+
+  function handleTableScroll() {
+    if (isSyncingScroll.current) {
+      isSyncingScroll.current = false;
+      return;
+    }
+    if (topScrollRef.current && tableScrollRef.current) {
+      isSyncingScroll.current = true;
+      topScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft;
+    }
+  }
+
   const isEditing = editingContact !== null;
   const dialogOpen = showAddDialog || isEditing;
 
@@ -360,8 +402,20 @@ export default function DashboardPage() {
       </div>
 
       {/* Vue tableau (desktop) */}
-      <Card className="hidden overflow-x-auto md:block">
-        <table className="w-full text-left text-sm">
+      {/* Barre de défilement horizontale dupliquée en haut, synchronisée avec
+          le tableau en dessous — permet de scroller à la souris sans devoir
+          chercher la barre native tout en bas du tableau. */}
+      <div
+        ref={topScrollRef}
+        onScroll={handleTopScroll}
+        className="hidden overflow-x-auto overflow-y-hidden md:block"
+        style={{ height: 14 }}
+      >
+        <div style={{ width: tableWidth, height: 1 }} />
+      </div>
+      <Card className="hidden md:block">
+        <div ref={tableScrollRef} onScroll={handleTableScroll} className="overflow-x-auto">
+        <table ref={tableRef} className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               {(Object.keys(SORTABLE_COLUMNS) as SortColumn[]).map((col) => (
@@ -440,6 +494,7 @@ export default function DashboardPage() {
             )}
           </tbody>
         </table>
+        </div>
       </Card>
 
       {/* Vue cartes (mobile) */}
