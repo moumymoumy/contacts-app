@@ -383,9 +383,9 @@ export default function DashboardPage() {
               <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium">{c.nom}</td>
                 <td className="px-4 py-3">{c.prenom ?? "—"}</td>
-                <td className="px-4 py-3">{c.email ?? "—"}</td>
+                <td className="max-w-[220px] truncate px-4 py-3" title={c.email ?? undefined}>{c.email ?? "—"}</td>
                 <td className="px-4 py-3">{c.telephone ?? "—"}</td>
-                <td className="px-4 py-3">{c.societe ?? "—"}</td>
+                <td className="max-w-[220px] truncate px-4 py-3" title={c.societe ?? undefined}>{c.societe ?? "—"}</td>
                 <td className="px-4 py-3">
                   <Badge variant="outline">{c.source}</Badge>
                 </td>
