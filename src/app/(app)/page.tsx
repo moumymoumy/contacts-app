@@ -100,6 +100,12 @@ export default function DashboardPage() {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
 
+  // Suppression groupée de toute une source (ex: tous les contacts "Wix")
+  const [deleteSourceDialogOpen, setDeleteSourceDialogOpen] = React.useState(false);
+  const [deleteSourceCount, setDeleteSourceCount] = React.useState<number | null>(null);
+  const [deleteSourceConfirmText, setDeleteSourceConfirmText] = React.useState("");
+  const [deletingSource, setDeletingSource] = React.useState(false);
+
   // Barre de défilement horizontale dupliquée en haut du tableau, synchronisée
   // avec le défilement réel — pratique pour scroller à la souris sans devoir
   // redescendre chercher la barre native en bas du tableau.
@@ -308,6 +314,56 @@ export default function DashboardPage() {
     fetchSources();
   }
 
+  /**
+   * Ouvre la modale de confirmation pour supprimer TOUS les contacts d'une
+   * source (celle actuellement sélectionnée dans le filtre). On récupère
+   * d'abord le nombre exact de contacts concernés (tous statuts confondus,
+   * y compris ceux "à vérifier") pour l'afficher clairement avant de
+   * demander confirmation.
+   */
+  async function openDeleteSourceDialog() {
+    setErrorMsg(null);
+    setDeleteSourceConfirmText("");
+    setDeleteSourceCount(null);
+    setDeleteSourceDialogOpen(true);
+
+    const { count, error } = await supabase
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .eq("source", sourceFilter);
+
+    if (error) {
+      setErrorMsg("Erreur lors du comptage : " + error.message);
+      setDeleteSourceDialogOpen(false);
+      return;
+    }
+    setDeleteSourceCount(count ?? 0);
+  }
+
+  function closeDeleteSourceDialog() {
+    setDeleteSourceDialogOpen(false);
+    setDeleteSourceConfirmText("");
+    setDeleteSourceCount(null);
+  }
+
+  async function handleDeleteSource() {
+    if (deleteSourceConfirmText !== sourceFilter) return;
+
+    setDeletingSource(true);
+    const { error } = await supabase.from("contacts").delete().eq("source", sourceFilter);
+    setDeletingSource(false);
+
+    if (error) {
+      setErrorMsg("Erreur lors de la suppression de la source : " + error.message);
+      return;
+    }
+
+    closeDeleteSourceDialog();
+    setSourceFilter("Toutes");
+    fetchContacts();
+    fetchSources();
+  }
+
   async function handleExport() {
     setExporting(true);
     setErrorMsg(null);
@@ -380,7 +436,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
           placeholder="Rechercher (nom, prénom, société, email, téléphone)..."
           value={search}
@@ -399,6 +455,15 @@ export default function DashboardPage() {
             </option>
           ))}
         </Select>
+        {sourceFilter !== "Toutes" && (
+          <Button
+            variant="destructive"
+            onClick={openDeleteSourceDialog}
+            className="shrink-0"
+          >
+            🗑️ Supprimer toute la source « {sourceFilter} »
+          </Button>
+        )}
       </div>
 
       {/* Vue tableau (desktop) */}
@@ -606,6 +671,48 @@ export default function DashboardPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteSourceDialogOpen} onOpenChange={(open) => !open && closeDeleteSourceDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer toute la source « {sourceFilter} »</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {deleteSourceCount === null ? (
+              <p className="text-sm text-slate-500">Calcul en cours...</p>
+            ) : (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                Vous êtes sur le point de supprimer <strong>définitivement {deleteSourceCount} contact(s)</strong>{" "}
+                de la source « {sourceFilter} », y compris ceux en attente de vérification
+                (doublons) le cas échéant. Cette action est <strong>irréversible</strong>.
+              </div>
+            )}
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Pour confirmer, tapez exactement <strong>{sourceFilter}</strong> ci-dessous :
+              </label>
+              <Input
+                value={deleteSourceConfirmText}
+                onChange={(e) => setDeleteSourceConfirmText(e.target.value)}
+                placeholder={sourceFilter}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={closeDeleteSourceDialog}>
+                Annuler
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={deleteSourceConfirmText !== sourceFilter || deletingSource || deleteSourceCount === null}
+                onClick={handleDeleteSource}
+              >
+                {deletingSource ? "Suppression..." : "Supprimer définitivement"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
