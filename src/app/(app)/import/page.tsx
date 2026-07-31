@@ -26,7 +26,10 @@ interface ImportSummary {
 
 // Sources courantes proposées par défaut. Ajoute-en d'autres ici si besoin
 // (ex: "Facebook", "Événement") en gardant la même orthographe à chaque fois.
-const SOURCE_PRESETS = ["Wix", "Mailchimp", "Brevo", "Import_Excel", "Autre"];
+// Sources par défaut, toujours proposées même si aucun contact n'existe encore.
+// La liste réelle affichée à l'utilisateur est complétée automatiquement avec
+// les sources déjà utilisées dans la base (voir fetchExistingSources ci-dessous).
+const DEFAULT_SOURCE_PRESETS = ["Wix", "Mailchimp", "Brevo", "Import_Excel"];
 
 export default function ImportPage() {
   const [step, setStep] = React.useState<Step>("upload");
@@ -40,6 +43,29 @@ export default function ImportPage() {
   const [progress, setProgress] = React.useState(0);
   const [summary, setSummary] = React.useState<ImportSummary | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Liste des sources proposées dans le menu déroulant : les valeurs par
+  // défaut + toutes les sources personnalisées déjà utilisées dans la base
+  // (ex: une source "Autre" saisie lors d'un import précédent), + "Autre"
+  // toujours en dernier pour en saisir une nouvelle.
+  const [sourceOptions, setSourceOptions] = React.useState<string[]>([
+    ...DEFAULT_SOURCE_PRESETS,
+    "Autre",
+  ]);
+
+  const fetchExistingSources = React.useCallback(async () => {
+    const { data, error } = await supabase.from("contacts").select("source");
+    if (error || !data) return;
+    const existing = Array.from(
+      new Set(data.map((d: { source: string }) => d.source).filter(Boolean))
+    );
+    const merged = Array.from(new Set([...DEFAULT_SOURCE_PRESETS, ...existing]));
+    setSourceOptions([...merged, "Autre"]);
+  }, []);
+
+  React.useEffect(() => {
+    fetchExistingSources();
+  }, [fetchExistingSources]);
 
   // Le nom de source final utilisé pour l'import : le préréglage choisi,
   // ou le texte personnalisé si "Autre" est sélectionné
@@ -174,6 +200,7 @@ export default function ImportPage() {
     }
 
     setSummary({ total: rows.length, actif, aVerifier, ignores, erreurs });
+    fetchExistingSources();
     setStep("done");
   }
 
@@ -217,7 +244,7 @@ export default function ImportPage() {
                   onChange={(e) => setSourcePreset(e.target.value)}
                   className="max-w-xs"
                 >
-                  {SOURCE_PRESETS.map((s) => (
+                  {sourceOptions.map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
