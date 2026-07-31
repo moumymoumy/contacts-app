@@ -86,6 +86,36 @@ export default function DashboardPage() {
   const [sources, setSources] = React.useState<string[]>([]);
   const [exporting, setExporting] = React.useState(false);
 
+  // Colonnes personnalisées issues des champs "keep_custom" lors des imports
+  // (ex: "Voix", "Niveau"...). Détectées automatiquement à partir des
+  // metadata des contacts ; l'utilisateur choisit lesquelles afficher.
+  const [availableCustomFields, setAvailableCustomFields] = React.useState<string[]>([]);
+  const [visibleCustomFields, setVisibleCustomFields] = React.useState<string[]>([]);
+  const [showColumnSettings, setShowColumnSettings] = React.useState(false);
+
+  // Charge la préférence de colonnes visibles depuis le navigateur (persiste
+  // d'une session à l'autre, uniquement côté client)
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem("contacts_custom_columns");
+      if (saved) setVisibleCustomFields(JSON.parse(saved));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function toggleCustomFieldVisibility(field: string) {
+    setVisibleCustomFields((prev) => {
+      const next = prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field];
+      try {
+        localStorage.setItem("contacts_custom_columns", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
   // État du tri par colonne (par défaut : Nom, croissant — comme avant)
   const [sortColumn, setSortColumn] = React.useState<SortColumn>("nom");
   const [sortDirection, setSortDirection] = React.useState<SortDirection>("asc");
@@ -212,9 +242,33 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Détecte tous les noms de champs personnalisés déjà utilisés (ex: "Voix",
+  // "Niveau"...) en parcourant les metadata de tous les contacts actifs.
+  // Utilise une cast souple (any) pour ne pas dépendre de la définition
+  // exacte du type Contact dans lib/supabase.ts.
+  const fetchCustomFieldNames = React.useCallback(async () => {
+    const { data } = await supabase
+      .from("contacts")
+      .select("metadata")
+      .eq("status", "actif")
+      .limit(5000);
+    if (data) {
+      const names = new Set<string>();
+      for (const row of data as { metadata: unknown }[]) {
+        const champs = (row.metadata as { champs_personnalises?: Record<string, unknown> } | null)
+          ?.champs_personnalises;
+        if (champs) {
+          for (const key of Object.keys(champs)) names.add(key);
+        }
+      }
+      setAvailableCustomFields(Array.from(names).sort((a, b) => a.localeCompare(b, "fr")));
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchSources();
-  }, [fetchSources]);
+    fetchCustomFieldNames();
+  }, [fetchSources, fetchCustomFieldNames]);
 
   React.useEffect(() => {
     const timeout = setTimeout(() => {
@@ -482,6 +536,35 @@ export default function DashboardPage() {
             </option>
           ))}
         </Select>
+        {availableCustomFields.length > 0 && (
+          <div className="relative shrink-0">
+            <Button variant="outline" onClick={() => setShowColumnSettings((s) => !s)}>
+              ⚙️ Colonnes personnalisées
+            </Button>
+            {showColumnSettings && (
+              <div className="absolute left-0 top-full z-10 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                <p className="mb-2 text-xs font-semibold uppercase text-slate-400">
+                  Champs issus des imports
+                </p>
+                <div className="space-y-1">
+                  {availableCustomFields.map((field) => (
+                    <label
+                      key={field}
+                      className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleCustomFields.includes(field)}
+                        onChange={() => toggleCustomFieldVisibility(field)}
+                      />
+                      {field}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {sourceFilter !== "Toutes" && (
           <Button
             variant="destructive"
@@ -521,6 +604,11 @@ export default function DashboardPage() {
                   {sortColumn === col && <SortArrow direction={sortDirection} />}
                 </th>
               ))}
+              {visibleCustomFields.map((field) => (
+                <th key={field} className="px-4 py-3">
+                  {field}
+                </th>
+              ))}
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -535,6 +623,16 @@ export default function DashboardPage() {
                 <td className="px-4 py-3">
                   <Badge variant="outline">{c.source}</Badge>
                 </td>
+                {visibleCustomFields.map((field) => {
+                  const champs = (c as unknown as { metadata?: { champs_personnalises?: Record<string, unknown> } })
+                    .metadata?.champs_personnalises;
+                  const value = champs?.[field];
+                  return (
+                    <td key={field} className="max-w-[180px] truncate px-4 py-3" title={value ? String(value) : undefined}>
+                      {value ? String(value) : "—"}
+                    </td>
+                  );
+                })}
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-1">
                     <Button
@@ -579,7 +677,7 @@ export default function DashboardPage() {
             ))}
             {!loading && contacts.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={7 + visibleCustomFields.length} className="px-4 py-8 text-center text-slate-400">
                   Aucun contact trouvé.
                 </td>
               </tr>
