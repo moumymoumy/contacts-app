@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const DB_FIELDS = [
@@ -10,6 +11,7 @@ export const DB_FIELDS = [
   { value: "email", label: "Email" },
   { value: "telephone", label: "Téléphone" },
   { value: "societe", label: "Société" },
+  { value: "keep_custom", label: "Garder sous un nom personnalisé" },
   { value: "ignore", label: "-- Ignorer cette colonne --" },
 ] as const;
 
@@ -17,11 +19,17 @@ export type DbFieldValue = (typeof DB_FIELDS)[number]["value"];
 
 export type ColumnMapping = Record<string, DbFieldValue>;
 
+// Nom personnalisé choisi pour chaque colonne mappée sur "keep_custom"
+// (clé = en-tête d'origine de la colonne CSV, valeur = nom voulu)
+export type CustomNameMapping = Record<string, string>;
+
 interface CsvMapperProps {
   headers: string[];
   previewRows: string[][];
   mapping: ColumnMapping;
   onMappingChange: (mapping: ColumnMapping) => void;
+  customNames: CustomNameMapping;
+  onCustomNameChange: (customNames: CustomNameMapping) => void;
 }
 
 /**
@@ -63,9 +71,26 @@ export function guessMapping(headers: string[]): ColumnMapping {
   return mapping;
 }
 
-export function CsvMapper({ headers, previewRows, mapping, onMappingChange }: CsvMapperProps) {
+export function CsvMapper({
+  headers,
+  previewRows,
+  mapping,
+  onMappingChange,
+  customNames,
+  onCustomNameChange,
+}: CsvMapperProps) {
   function updateMapping(header: string, value: DbFieldValue) {
     onMappingChange({ ...mapping, [header]: value });
+    // Quand on bascule une colonne sur "Garder sous un nom personnalisé",
+    // on pré-remplit automatiquement avec le nom d'origine de la colonne,
+    // pour que l'utilisateur n'ait rien à taper s'il garde ce nom tel quel.
+    if (value === "keep_custom" && !customNames[header]) {
+      onCustomNameChange({ ...customNames, [header]: header });
+    }
+  }
+
+  function updateCustomName(header: string, name: string) {
+    onCustomNameChange({ ...customNames, [header]: name });
   }
 
   return (
@@ -90,6 +115,14 @@ export function CsvMapper({ headers, previewRows, mapping, onMappingChange }: Cs
                       </option>
                     ))}
                   </Select>
+                  {mapping[h] === "keep_custom" && (
+                    <Input
+                      value={customNames[h] ?? h}
+                      onChange={(e) => updateCustomName(h, e.target.value)}
+                      placeholder="Nom du champ à conserver"
+                      className="mt-1 w-full text-xs"
+                    />
+                  )}
                 </th>
               ))}
             </tr>
