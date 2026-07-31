@@ -13,6 +13,7 @@ const FIELDS: { key: keyof Contact; label: string }[] = [
   { key: "email", label: "Email" },
   { key: "telephone", label: "Téléphone" },
   { key: "societe", label: "Société" },
+  { key: "source", label: "Source" },
 ];
 
 export type FieldChoice = "existing" | "imported";
