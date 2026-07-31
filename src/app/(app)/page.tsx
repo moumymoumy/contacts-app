@@ -27,7 +27,7 @@ const SORTABLE_COLUMNS = {
   source: "Source",
 } as const;
 
-type SortColumn = keyof typeof SORTABLE_COLUMNS;
+type SortColumn = keyof typeof SORTABLE_COLUMNS | string;
 type SortDirection = "asc" | "desc";
 
 function PencilIcon() {
@@ -195,11 +195,19 @@ export default function DashboardPage() {
 
   const fetchContacts = React.useCallback(async () => {
     setLoading(true);
+
+    // Le tri ne peut être délégué à la base que pour les colonnes standards.
+    // Pour une colonne personnalisée (issue des imports, stockée dans
+    // metadata), on récupère avec un tri stable par défaut (nom), puis on
+    // trie nous-mêmes côté client après réception des données.
+    const isBuiltInColumn = sortColumn in SORTABLE_COLUMNS;
+    const dbSortColumn = isBuiltInColumn ? sortColumn : "nom";
+
     let query = supabase
       .from("contacts")
       .select("*")
       .eq("status", "actif")
-      .order(sortColumn, { ascending: sortDirection === "asc", nullsFirst: false });
+      .order(dbSortColumn, { ascending: sortDirection === "asc", nullsFirst: false });
 
     // Requête séparée pour le VRAI total (compte exact en base), indépendante
     // de la limite ci-dessous qui ne sert qu'à l'affichage du tableau.
@@ -228,7 +236,20 @@ export default function DashboardPage() {
     ]);
 
     if (!error && data) {
-      setContacts(data as Contact[]);
+      let result = data as Contact[];
+      if (!isBuiltInColumn) {
+        result = [...result].sort((a, b) => {
+          const champsA = (a as unknown as { metadata?: { champs_personnalises?: Record<string, unknown> } })
+            .metadata?.champs_personnalises;
+          const champsB = (b as unknown as { metadata?: { champs_personnalises?: Record<string, unknown> } })
+            .metadata?.champs_personnalises;
+          const va = champsA?.[sortColumn] != null ? String(champsA[sortColumn]) : "";
+          const vb = champsB?.[sortColumn] != null ? String(champsB[sortColumn]) : "";
+          const cmp = va.localeCompare(vb, "fr");
+          return sortDirection === "asc" ? cmp : -cmp;
+        });
+      }
+      setContacts(result);
     }
     setTotalCount(count ?? null);
     setLoading(false);
@@ -605,8 +626,14 @@ export default function DashboardPage() {
                 </th>
               ))}
               {visibleCustomFields.map((field) => (
-                <th key={field} className="px-4 py-3">
+                <th
+                  key={field}
+                  className="cursor-pointer select-none px-4 py-3 hover:text-slate-700"
+                  onClick={() => handleSort(field)}
+                  title="Cliquer pour trier"
+                >
                   {field}
+                  {sortColumn === field && <SortArrow direction={sortDirection} />}
                 </th>
               ))}
               <th className="px-4 py-3 text-right">Actions</th>
