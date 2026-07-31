@@ -7,6 +7,7 @@ import {
   CsvMapper,
   guessMapping,
   type ColumnMapping,
+  type CustomNameMapping,
 } from "@/components/csv-mapper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ export default function ImportPage() {
   const [headers, setHeaders] = React.useState<string[]>([]);
   const [rows, setRows] = React.useState<string[][]>([]);
   const [mapping, setMapping] = React.useState<ColumnMapping>({});
+  const [customNames, setCustomNames] = React.useState<CustomNameMapping>({});
   const [dragOver, setDragOver] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [summary, setSummary] = React.useState<ImportSummary | null>(null);
@@ -175,6 +177,18 @@ export default function ImportPage() {
         if (existingByName) existingId = existingByName.id as string;
       }
 
+      // Colonnes explicitement conservées sous un nom personnalisé (ex: "Voix",
+      // "Niveau" pour le formulaire Orchestre & Chœur), en plus des données
+      // brutes déjà systématiquement conservées dans import_raw.
+      const champsPersonnalises: Record<string, string> = {};
+      for (const [header, field] of Object.entries(mapping)) {
+        if (field === "keep_custom") {
+          const fieldName = customNames[header]?.trim() || header;
+          const value = row[headerIndex[header]] ?? "";
+          champsPersonnalises[fieldName] = value;
+        }
+      }
+
       const payload: ContactInsert = {
         nom: finalNom,
         prenom,
@@ -183,7 +197,10 @@ export default function ImportPage() {
         societe: getValue("societe"),
         source: sourceName || "Import_Excel",
         status: existingId ? "a_verifier" : "actif",
-        metadata: { import_raw: Object.fromEntries(headers.map((h, idx) => [h, row[idx] ?? ""])) },
+        metadata: {
+          import_raw: Object.fromEntries(headers.map((h, idx) => [h, row[idx] ?? ""])),
+          champs_personnalises: champsPersonnalises,
+        },
         duplicate_of: existingId,
       };
 
@@ -210,6 +227,7 @@ export default function ImportPage() {
     setHeaders([]);
     setRows([]);
     setMapping({});
+    setCustomNames({});
     setSummary(null);
     setErrorMsg(null);
   }
@@ -316,6 +334,8 @@ export default function ImportPage() {
             previewRows={rows.slice(0, 5)}
             mapping={mapping}
             onMappingChange={setMapping}
+            customNames={customNames}
+            onCustomNameChange={setCustomNames}
           />
           <div className="flex justify-end">
             <Button onClick={runImport}>Lancer l&apos;importation ({rows.length} lignes)</Button>
