@@ -161,6 +161,8 @@ export default function DashboardPage() {
     }
   }
 
+  const [totalCount, setTotalCount] = React.useState<number | null>(null);
+
   const fetchContacts = React.useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -169,21 +171,36 @@ export default function DashboardPage() {
       .eq("status", "actif")
       .order(sortColumn, { ascending: sortDirection === "asc", nullsFirst: false });
 
+    // Requête séparée pour le VRAI total (compte exact en base), indépendante
+    // de la limite ci-dessous qui ne sert qu'à l'affichage du tableau.
+    // Sans ça, le total affiché plafonnait artificiellement à la limite
+    // d'affichage dès que la base dépassait ce nombre de contacts.
+    let countQuery = supabase
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "actif");
+
     if (search.trim().length > 0) {
       const term = search.trim();
-      query = query.or(
-        `nom.ilike.%${term}%,prenom.ilike.%${term}%,societe.ilike.%${term}%,telephone.ilike.%${term}%,email.ilike.%${term}%`
-      );
+      const orFilter = `nom.ilike.%${term}%,prenom.ilike.%${term}%,societe.ilike.%${term}%,telephone.ilike.%${term}%,email.ilike.%${term}%`;
+      query = query.or(orFilter);
+      countQuery = countQuery.or(orFilter);
     }
 
     if (sourceFilter !== "Toutes") {
       query = query.eq("source", sourceFilter);
+      countQuery = countQuery.eq("source", sourceFilter);
     }
 
-    const { data, error } = await query.limit(500);
+    const [{ data, error }, { count }] = await Promise.all([
+      query.limit(5000),
+      countQuery,
+    ]);
+
     if (!error && data) {
       setContacts(data as Contact[]);
     }
+    setTotalCount(count ?? null);
     setLoading(false);
   }, [search, sourceFilter, sortColumn, sortDirection]);
 
@@ -369,11 +386,14 @@ export default function DashboardPage() {
     setErrorMsg(null);
 
     // On exporte TOUS les contacts actifs (pas seulement ceux affichés/filtrés à l'écran)
+    // .limit() explicite pour éviter une limite par défaut cachée de Supabase
+    // qui tronquerait silencieusement l'export une fois la base bien grande.
     const { data, error } = await supabase
       .from("contacts")
       .select("*")
       .eq("status", "actif")
-      .order("nom", { ascending: true });
+      .order("nom", { ascending: true })
+      .limit(20000);
 
     setExporting(false);
 
@@ -418,7 +438,14 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Contacts</h1>
           <p className="text-sm text-slate-500">
-            {loading ? "Chargement..." : `${contacts.length} contact(s) actif(s)`}
+            {loading
+              ? "Chargement..."
+              : `${totalCount ?? contacts.length} contact(s) actif(s)`}
+            {!loading && totalCount !== null && totalCount > contacts.length && (
+              <span className="ml-1 text-amber-600">
+                (affichage limité aux {contacts.length} premiers)
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
