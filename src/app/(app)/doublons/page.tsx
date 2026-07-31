@@ -98,6 +98,24 @@ export default function DoublonsPage() {
     setSelectionsMap((prev) => ({ ...prev, [importedId]: next }));
   }
 
+  /**
+   * Bascule le choix "Source" sur "importé" pour TOUS les doublons actuellement
+   * affichés, sans toucher aux autres champs (Nom, Email...). Pratique pour
+   * appliquer rapidement le nom de la source du dernier import à tout le lot,
+   * juste avant d'utiliser "Tout fusionner avec les valeurs choisies".
+   */
+  function handleUseImportedSourceForAll() {
+    setSelectionsMap((prev) => {
+      const next = { ...prev };
+      for (const pair of pairs) {
+        const current =
+          next[pair.imported.id] ?? getDefaultSelections(pair.existing, pair.imported);
+        next[pair.imported.id] = { ...current, source: "imported" };
+      }
+      return next;
+    });
+  }
+
   async function handleIgnore(importedId: string) {
     setBusyId(importedId);
     const { error } = await supabase
@@ -224,7 +242,12 @@ export default function DoublonsPage() {
           </p>
         </div>
         {pairs.length > 0 && (
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {!confirmMergeAll && !mergingAll && (
+              <Button variant="outline" onClick={handleUseImportedSourceForAll}>
+                Utiliser la source importée pour tous
+              </Button>
+            )}
             {confirmMergeAll && !mergingAll && (
               <Button variant="ghost" onClick={() => setConfirmMergeAll(false)}>
                 Annuler
