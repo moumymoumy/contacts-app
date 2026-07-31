@@ -614,7 +614,7 @@ export default function DashboardPage() {
         <table ref={tableRef} className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              {(Object.keys(SORTABLE_COLUMNS) as SortColumn[]).map((col) => (
+              {(Object.keys(SORTABLE_COLUMNS) as (keyof typeof SORTABLE_COLUMNS)[]).map((col) => (
                 <th
                   key={col}
                   className="cursor-pointer select-none px-4 py-3 hover:text-slate-700"
