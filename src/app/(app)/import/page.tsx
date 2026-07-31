@@ -61,8 +61,13 @@ export default function ImportPage() {
     const existing = Array.from(
       new Set(data.map((d: { source: string }) => d.source).filter(Boolean))
     );
-    const merged = Array.from(new Set([...DEFAULT_SOURCE_PRESETS, ...existing]));
-    setSourceOptions([...merged, "Autre"]);
+    // On exclut "Autre" des sources personnalisées trouvées en base : ce nom
+    // ne doit jamais être traité comme une vraie source, seulement comme le
+    // choix générique toujours proposé en dernier dans la liste.
+    const customSources = existing
+      .filter((s) => s !== "Autre" && !DEFAULT_SOURCE_PRESETS.includes(s))
+      .sort((a, b) => a.localeCompare(b, "fr"));
+    setSourceOptions([...DEFAULT_SOURCE_PRESETS, ...customSources, "Autre"]);
   }, []);
 
   React.useEffect(() => {
@@ -72,7 +77,7 @@ export default function ImportPage() {
   // Le nom de source final utilisé pour l'import : le préréglage choisi,
   // ou le texte personnalisé si "Autre" est sélectionné
   const sourceName =
-    sourcePreset === "Autre" ? customSource.trim() || "Autre" : sourcePreset;
+    sourcePreset === "Autre" ? customSource.trim() : sourcePreset;
 
   function handleFile(file: File) {
     setErrorMsg(null);
@@ -106,6 +111,11 @@ export default function ImportPage() {
   }
 
   async function runImport() {
+    if (sourcePreset === "Autre" && !customSource.trim()) {
+      setErrorMsg("Veuillez préciser un nom pour cette source personnalisée avant de lancer l'import.");
+      return;
+    }
+
     setStep("importing");
     setProgress(0);
     setErrorMsg(null);
